@@ -34,3 +34,16 @@ CREATE TABLE IF NOT EXISTS bronze.raw_daily_reports (
     deaths            TEXT,
     recovered         TEXT
 );
+
+
+CREATE TABLE IF NOT EXISTS silver.covid_cases (
+    id               BIGSERIAL PRIMARY KEY,
+    report_date      DATE        NOT NULL,
+    country   TEXT        NOT NULL,
+    province  TEXT,
+    confirmed        INTEGER     NOT NULL DEFAULT 0,
+    deaths           INTEGER     NOT NULL DEFAULT 0,
+    recovered        INTEGER     NOT NULL DEFAULT 0,
+    source_file      TEXT,
+    UNIQUE (report_date, country, province)
+);
