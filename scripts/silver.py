@@ -63,11 +63,77 @@ def unify_columns(df: pd.DataFrame) -> pd.DataFrame:
     v3/v4 files have province_state, country_region, etc.
     We combine them with coalesce logic.
     """
-    df["country_region"] = df.get("country_region", pd.Series()).combine_first(
-                              df.get("country_region_v1", pd.Series()))
-    df["province_state"] = df.get("province_state", pd.Series()).combine_first(
-                              df.get("province_state_v1", pd.Series()))
+    df["country_region"] = df["country_region"].combine_first(
+                              df["country_region_v1"])
+    df["province_state"] = df["province_state"].combine_first(
+                              df["province_state_v1"])
     return df
+
+def validate_silver(df: pd.DataFrame) -> bool:
+    errors = []
+
+    # report_date
+    null_dates = df["report_date"].isna().sum()
+    if null_dates > 0:
+        errors.append(f"report_date: {null_dates:,} nulls")
+
+    # country
+    null_country = df["country"].isna().sum()
+    blank_country = (df["country"].str.strip() == "").sum()
+    unmapped = df[df["country"].isin(COUNTRY_MAP.keys())]["country"].unique()
+    if null_country > 0:
+        errors.append(f"country: {null_country:,} nulls")
+    if blank_country > 0:
+        errors.append(f"country: {blank_country:,} blank values")
+    if len(unmapped) > 0:
+        errors.append(f"country: {len(unmapped)} raw names not normalized → {list(unmapped)}")
+
+    # province — allowed to be null (not all countries have provinces)
+    # just report how many are null for awareness
+    null_province = df["province"].isna().sum()
+    print(f"  ℹ️  province: {null_province:,} nulls (expected)")
+
+    # confirmed
+    null_confirmed = df["confirmed"].isna().sum()
+    neg_confirmed  = (df["confirmed"] < 0).sum()
+    if null_confirmed > 0:
+        errors.append(f"confirmed: {null_confirmed:,} nulls")
+    if neg_confirmed > 0:
+        errors.append(f"confirmed: {neg_confirmed:,} negative values")
+
+    # deaths
+    null_deaths = df["deaths"].isna().sum()
+    neg_deaths  = (df["deaths"] < 0).sum()
+    if null_deaths > 0:
+        errors.append(f"deaths: {null_deaths:,} nulls")
+    if neg_deaths > 0:
+        errors.append(f"deaths: {neg_deaths:,} negative values")
+
+    # recovered
+    null_recovered = df["recovered"].isna().sum()
+    neg_recovered  = (df["recovered"] < 0).sum()
+    if null_recovered > 0:
+        errors.append(f"recovered: {null_recovered:,} nulls")
+    if neg_recovered > 0:
+        errors.append(f"recovered: {neg_recovered:,} negative values")
+
+    # source_file
+    null_source = df["source_file"].isna().sum()
+    if null_source > 0:
+        errors.append(f"source_file: {null_source:,} nulls")
+
+    # Print results
+    print("\n── Silver Validation ──────────────────")
+    if errors:
+        for e in errors:
+            print(f"  ❌ {e}")
+        print("───────────────────────────────────────\n")
+        return False
+    else:
+        print("  ✅ All columns passed")
+        print("───────────────────────────────────────\n")
+        return True
+    
 
 def bronze_to_silver():
     engine = create_engine(DB_URL)
@@ -131,6 +197,11 @@ def bronze_to_silver():
         "report_date", "country_region", "province_state",
          "confirmed", "deaths", "recovered", "_source_file"
     ]].rename(columns={"_source_file": "source_file", "country_region": "country", "province_state": "province"})
+
+    valid = validate_silver(silver)
+    if not valid:
+        print("❌ Silver validation failed, aborting load to database.")
+        return
 
     # 10. Write to Silver (truncate first for idempotency)
     with engine.connect() as conn:
