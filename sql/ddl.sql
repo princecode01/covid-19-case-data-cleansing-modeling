@@ -47,3 +47,35 @@ CREATE TABLE IF NOT EXISTS silver.covid_cases (
     source_file      TEXT,
     UNIQUE (report_date, country, province)
 );
+
+
+CREATE TABLE IF NOT EXISTS gold.dim_date (
+    date_id      SERIAL PRIMARY KEY,
+    full_date    DATE   UNIQUE NOT NULL,
+    year         SMALLINT,
+    month        SMALLINT,
+    day          SMALLINT,
+    quarter      SMALLINT,
+    month_name   TEXT,
+    week_number  SMALLINT,
+    day_of_week  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS gold.dim_location (
+    location_id    SERIAL PRIMARY KEY,
+    country TEXT NOT NULL,
+    province TEXT,
+    UNIQUE (country, province)
+);
+
+CREATE TABLE IF NOT EXISTS gold.fact_covid_cases (
+    cases_id        BIGSERIAL PRIMARY KEY,
+    date_id        INTEGER NOT NULL REFERENCES gold.dim_date(date_id),
+    location_id    INTEGER NOT NULL REFERENCES gold.dim_location(location_id),
+    confirmed      INTEGER NOT NULL DEFAULT 0,
+    deaths         INTEGER NOT NULL DEFAULT 0,
+    recovered      INTEGER NOT NULL DEFAULT 0,
+    new_confirmed  INTEGER,
+    new_deaths     INTEGER,
+    UNIQUE (date_id, location_id)
+);
