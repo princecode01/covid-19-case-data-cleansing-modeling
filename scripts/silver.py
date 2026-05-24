@@ -82,6 +82,7 @@ def bronze_to_silver():
     print("Cleaning and transforming to Silver...")
     # 2. Unify the 4 schemas into one shape
     df = unify_columns(df)
+    print(f"  {len(df):,} rows after unifying columns")
 
     # 3. Standardize dates
     #    Files have formats like "1/22/2020 17:00", "2020-01-22T17:00:00", "01/22/2020"
@@ -91,6 +92,7 @@ def bronze_to_silver():
             errors="coerce"
         ).dt.date
     )
+    
     # Fall back: derive date from the source filename if Last Update is null
     mask = df["report_date"].isna()
     df.loc[mask, "report_date"] = pd.to_datetime(
@@ -115,12 +117,14 @@ def bronze_to_silver():
 
     # 7. Drop rows missing the essentials
     df = df.dropna(subset=["report_date", "country_region"])
+    print(f"  {len(df):,} rows after dropping missing dates/countries")
 
     # 8. Remove duplicates (same date + country + province )
     df = df.drop_duplicates(
         subset=["report_date", "country_region", "province_state"],
         keep="last"
     )
+    print(f"  {len(df):,} rows after deduplication")
 
     # 9. Select final columns for Silver
     silver = df[[
