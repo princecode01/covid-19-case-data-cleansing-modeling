@@ -67,6 +67,9 @@ def unify_columns(df: pd.DataFrame) -> pd.DataFrame:
                               df["country_region_v1"])
     df["province_state"] = df["province_state"].combine_first(
                               df["province_state_v1"])
+    
+    df["lat"]  = df["lat"].combine_first(df["latitude_v2"])
+    df["long_"] = df["long_"].combine_first(df["longitude_v2"])
     return df
 
 def validate_silver(df: pd.DataFrame) -> bool:
@@ -92,6 +95,14 @@ def validate_silver(df: pd.DataFrame) -> bool:
     # just report how many are null for awareness
     null_province = df["province"].isna().sum()
     print(f"  ℹ️  province: {null_province:,} nulls (expected)")
+
+    # lat, long_
+    # null_lat = df["lat"].isna().sum()
+    # null_long_ = df["long_"].isna().sum()
+    # if null_lat > 0:
+    #     errors.append(f"lat: {null_lat:,} nulls")
+    # if null_long_ > 0:
+    #     errors.append(f"long_: {null_long_:,} nulls")
 
     # confirmed
     null_confirmed = df["confirmed"].isna().sum()
@@ -177,9 +188,9 @@ def bronze_to_silver():
     for col in ["confirmed", "deaths", "recovered", "active"]:
         df[col] = coerce_int(df[col])
 
-    # # 6. Fix lat/long
-    # df["lat"]   = pd.to_numeric(df["lat"],   errors="coerce")
-    # df["long_"] = pd.to_numeric(df["long_"], errors="coerce")
+    # 6. Fix lat/long
+    df["lat"]   = pd.to_numeric(df["lat"],   errors="coerce")
+    df["long_"] = pd.to_numeric(df["long_"], errors="coerce")
 
     # 7. Drop rows missing the essentials
     df = df.dropna(subset=["report_date", "country_region"])
@@ -194,7 +205,7 @@ def bronze_to_silver():
 
     # 9. Select final columns for Silver
     silver = df[[
-        "report_date", "country_region", "province_state",
+        "report_date", "country_region", "province_state","lat","long_",
          "confirmed", "deaths", "recovered", "_source_file"
     ]].rename(columns={"_source_file": "source_file", "country_region": "country", "province_state": "province"})
 

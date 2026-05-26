@@ -39,8 +39,10 @@ CREATE TABLE IF NOT EXISTS bronze.raw_daily_reports (
 CREATE TABLE IF NOT EXISTS silver.covid_cases (
     id               BIGSERIAL PRIMARY KEY,
     report_date      DATE        NOT NULL,
-    country   TEXT        NOT NULL,
-    province  TEXT,
+    country          TEXT        NOT NULL,
+    province         TEXT,
+    lat              NUMERIC(9,6),
+    long_            NUMERIC(9,6),
     confirmed        INTEGER     NOT NULL DEFAULT 0,
     deaths           INTEGER     NOT NULL DEFAULT 0,
     recovered        INTEGER     NOT NULL DEFAULT 0,
@@ -65,6 +67,8 @@ CREATE TABLE IF NOT EXISTS gold.dim_location (
     location_id    SERIAL PRIMARY KEY,
     country TEXT NOT NULL,
     province TEXT,
+    lat       NUMERIC(9,6),
+    long_     NUMERIC(9,6),
     UNIQUE (country, province)
 );
 
