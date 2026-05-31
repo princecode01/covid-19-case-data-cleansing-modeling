@@ -3,3 +3,6 @@
 data/raw/
 .vscode/
 Exploring_Data.ipynb
+__pycache__/
+logs/
+plugins/
