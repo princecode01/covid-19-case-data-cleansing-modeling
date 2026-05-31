@@ -79,17 +79,111 @@
 # volumes:
 #   postgres_data:
 
+# version: '3.8'
+
+# x-airflow-common: &airflow-common
+#   image: apache/airflow:3.2.1
+#   user: "${AIRFLOW_UID:-50000}:0"
+#   environment:
+#     AIRFLOW__CORE__EXECUTOR: LocalExecutor
+#     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow_user:airflow_pass@airflow_postgres/airflow_db
+#     AIRFLOW__CORE__FERNET_KEY: ''
+#     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+#     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+#   volumes:
+#     - ./dags:/opt/airflow/dags
+#     - ./logs:/opt/airflow/logs
+#     - ./plugins:/opt/airflow/plugins
+#     - ./scripts:/opt/airflow/scripts   
+#   depends_on:
+#     airflow_postgres:
+#       condition: service_healthy
+
+# services:
+#   postgres:
+#     image: postgres:15
+#     container_name: covid_postgres
+#     environment:
+#       POSTGRES_USER: covid_user
+#       POSTGRES_PASSWORD: covid_pass
+#       POSTGRES_DB: covid_db
+#     ports:
+#       - "5432:5432"
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+
+
+#   airflow_postgres:
+#     image: postgres:15
+#     container_name: airflow_postgres
+#     environment:
+#       POSTGRES_USER: airflow_user
+#       POSTGRES_PASSWORD: airflow_pass
+#       POSTGRES_DB: airflow_db
+#     ports:
+#       - "5433:5432"
+#     volumes:
+#       - airflow_postgres_data:/var/lib/postgresql/data
+#     healthcheck:
+#       test: ["CMD", "pg_isready", "-U", "airflow_user", "-d", "airflow_db"]
+#       interval: 5s
+#       retries: 5
+
+  
+#   airflow-init:
+#     <<: *airflow-common
+#     container_name: airflow_init
+#     entrypoint: /bin/bash
+#     command:
+#       - -c
+#       - |
+#         airflow db migrate &&
+#         airflow users create \
+#           --username admin \
+#           --firstname Admin \
+#           --lastname User \
+#           --role Admin \
+#           --email admin@example.com \
+#           --password admin
+#     restart: on-failure
+
+  
+#   airflow-webserver:
+#     <<: *airflow-common
+#     container_name: airflow_webserver
+#     command: webserver
+#     ports:
+#       - "8080:8080"
+#     healthcheck:
+#       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+#       interval: 10s
+#       timeout: 10s
+#       retries: 5
+#     restart: always
+
+  
+#   airflow-scheduler:
+#     <<: *airflow-common
+#     container_name: airflow_scheduler
+#     command: scheduler
+#     restart: always
+
+# volumes:
+#   postgres_data:
+#   airflow_postgres_data:
+
+
 version: '3.8'
 
 x-airflow-common: &airflow-common
-  image: apache/airflow:2.9.0
+  image: apache/airflow:2.9.3
+  user: "${AIRFLOW_UID:-50000}:0"
   environment:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow_user:airflow_pass@airflow_postgres/airflow_db
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -100,7 +194,6 @@ x-airflow-common: &airflow-common
       condition: service_healthy
 
 services:
-  # --- Your existing COVID Postgres ---
   postgres:
     image: postgres:15
     container_name: covid_postgres
@@ -113,7 +206,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # --- Dedicated Postgres for Airflow metadata ---
   airflow_postgres:
     image: postgres:15
     container_name: airflow_postgres
@@ -130,7 +222,6 @@ services:
       interval: 5s
       retries: 5
 
-  # --- Airflow DB init (runs once) ---
   airflow-init:
     <<: *airflow-common
     container_name: airflow_init
@@ -146,9 +237,7 @@ services:
           --role Admin \
           --email admin@example.com \
           --password admin
-    restart: on-failure
 
-  # --- Airflow Webserver ---
   airflow-webserver:
     <<: *airflow-common
     container_name: airflow_webserver
@@ -162,7 +251,6 @@ services:
       retries: 5
     restart: always
 
-  # --- Airflow Scheduler ---
   airflow-scheduler:
     <<: *airflow-common
     container_name: airflow_scheduler

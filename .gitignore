@@ -6,3 +6,4 @@ Exploring_Data.ipynb
 __pycache__/
 logs/
 plugins/
+airflow_backup.sql

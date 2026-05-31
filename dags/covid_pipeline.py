@@ -1,5 +1,5 @@
 from airflow import DAG
-from airflow.providers.standard.operators.python import PythonOperator
+from airflow.operators.python import PythonOperator
 from datetime import datetime, date
 import sys
 
@@ -11,17 +11,17 @@ from gold   import silver_to_gold
 
 
 def bronze_task(**context):
-    # Airflow 3: logical_date replaces execution_date
-    logical_date = context["logical_date"].date()
-    ingest_one_day(logical_date)
+    # Airflow 2.x: use execution_date instead of logical_date
+    execution_date = context["execution_date"].date()
+    ingest_one_day(execution_date)
 
 
 with DAG(
     dag_id="covid_daily_bronze",
     start_date=datetime(2020, 1, 22),
-    schedule="@daily",
-    catchup=True,      # True here — tells Airflow to backfill all past dates
-    max_active_runs=3, # run 3 dates in parallel to speed up the backfill
+    schedule_interval="@daily",
+    catchup=True,      # backfill all past dates
+    max_active_runs=3, # run 3 dates in parallel
     tags=["covid", "bronze"],
 ) as dag:
 
@@ -41,3 +41,7 @@ with DAG(
     )
 
     bronze >> silver >> gold
+
+
+
+
