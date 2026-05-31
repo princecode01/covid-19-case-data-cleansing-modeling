@@ -40,15 +40,16 @@ CREATE TABLE IF NOT EXISTS bronze.raw_daily_reports (
 CREATE TABLE IF NOT EXISTS silver.covid_cases (
     id               BIGSERIAL PRIMARY KEY,
     report_date      DATE        NOT NULL,
-    country          TEXT        NOT NULL,
-    province         TEXT,
-    lat              NUMERIC(9,6),
-    long_            NUMERIC(9,6),
+    country_region   TEXT        NOT NULL,
+    province_state   TEXT,                   -- NULL for country-level rows
+    admin2           TEXT,                   -- US county, NULL elsewhere
     confirmed        INTEGER     NOT NULL DEFAULT 0,
     deaths           INTEGER     NOT NULL DEFAULT 0,
     recovered        INTEGER     NOT NULL DEFAULT 0,
-    source_file      TEXT,
-    UNIQUE (report_date, country, province)
+    lat              NUMERIC(9,6),
+    long_            NUMERIC(9,6),
+    source_file      TEXT,                   -- traceability from Bronze
+    UNIQUE (report_date, country_region, province_state, admin2)
 );
 
 
@@ -66,12 +67,14 @@ CREATE TABLE IF NOT EXISTS gold.dim_date (
 
 CREATE TABLE IF NOT EXISTS gold.dim_location (
     location_id    SERIAL PRIMARY KEY,
-    country TEXT NOT NULL,
-    province TEXT,
-    lat       NUMERIC(9,6),
-    long_     NUMERIC(9,6),
+    country        TEXT NOT NULL,
+    province       TEXT,
+    admin2         TEXT,            -- US county, NULL elsewhere
+    lat            NUMERIC(9,6),
+    long_          NUMERIC(9,6),
     UNIQUE (country, province)
 );
+
 
 CREATE TABLE IF NOT EXISTS gold.fact_covid_cases (
     cases_id        BIGSERIAL PRIMARY KEY,
@@ -82,5 +85,6 @@ CREATE TABLE IF NOT EXISTS gold.fact_covid_cases (
     recovered      INTEGER NOT NULL DEFAULT 0,
     new_confirmed  INTEGER,
     new_deaths     INTEGER,
+    moving_avg_7d  NUMERIC(12,2), -- 7-day rolling avg of new_confirmed
     UNIQUE (date_id, location_id)
 );

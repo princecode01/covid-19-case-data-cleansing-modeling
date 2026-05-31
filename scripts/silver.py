@@ -146,13 +146,38 @@ def validate_silver(df: pd.DataFrame) -> bool:
         return True
     
 
+def get_unprocessed_files(engine) -> list[str]:
+    query = """
+        SELECT DISTINCT _source_file FROM bronze.raw_daily_reports
+        EXCEPT
+        SELECT DISTINCT source_file  FROM silver.covid_cases
+        ORDER BY 1
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text(query))
+        return [row[0] for row in result]
+
+
 def bronze_to_silver():
     engine = create_engine(DB_URL)
 
-    # 1. Read all Bronze data
-    print("Reading Bronze...")
-    df = pd.read_sql("SELECT * FROM bronze.raw_daily_reports", engine)
-    print(f"  {len(df):,} raw rows loaded")
+    # 1. which Bronze files have not been cleaned yet?
+    new_files = get_unprocessed_files(engine)
+
+    if not new_files:
+        print("🥈 Silver is already up to date — nothing to process")
+        return
+
+    print(f"🥈 Processing {len(new_files)} new Bronze file(s)...\n")
+
+    # Read ONLY the new files — not the entire Bronze table
+    placeholders = ", ".join(f"'{f}'" for f in new_files)
+    df = pd.read_sql(
+        f"SELECT * FROM bronze.raw_daily_reports WHERE _source_file IN ({placeholders})",
+        engine
+    )
+
+    print(f"   {len(df):,} new rows loaded to process")
 
     print("------------------------------")
 
@@ -198,16 +223,16 @@ def bronze_to_silver():
 
     # 8. Remove duplicates (same date + country + province )
     df = df.drop_duplicates(
-        subset=["report_date", "country_region", "province_state"],
+        subset=["report_date", "country_region", "province_state", "admin2"],
         keep="last"
     )
     print(f"  {len(df):,} rows after deduplication")
 
     # 9. Select final columns for Silver
     silver = df[[
-        "report_date", "country_region", "province_state","lat","long_",
-         "confirmed", "deaths", "recovered", "_source_file"
-    ]].rename(columns={"_source_file": "source_file", "country_region": "country", "province_state": "province"})
+        "report_date", "country_region", "province_state", "admin2",
+         "confirmed", "deaths", "recovered", "lat", "long_", "_source_file"
+    ]].rename(columns={"_source_file": "source_file"})
 
     valid = validate_silver(silver)
     if not valid:
