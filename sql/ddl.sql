@@ -5,34 +5,35 @@ CREATE SCHEMA IF NOT EXISTS gold;
 
 
 CREATE TABLE IF NOT EXISTS bronze.raw_daily_reports (
-    -- Metadata columns
-    _source_file TEXT,
-    _ingested_at TIMESTAMP DEFAULT NOW(),
 
-    -- schema v1 + v2 column names (Jan–Mar 21 2020)
-    province_state_v1 TEXT,         -- "Province/State" (slash version)
-    country_region_v1 TEXT,         -- "Country/Region"
-    last_update_v1    TEXT,
-    latitude_v2       TEXT,
-    longitude_v2      TEXT,
+    -- metadata: added by us, not in the CSV (_prefix = "we added this")
+    _source_file        TEXT,         -- e.g. "01-22-2020.csv" (traceability)
+    _ingested_at        TIMESTAMP DEFAULT NOW(),  -- audit: when we downloaded it
 
-    -- schema v3 + v4 column names (Mar 22 2020 onwards)
-    fips              TEXT,
-    admin2            TEXT,
-    province_state    TEXT,         -- "Province_State" (underscore version)
-    country_region    TEXT,         -- "Country_Region"
-    last_update       TEXT,
-    lat               TEXT,
-    long_             TEXT,
-    active            TEXT,
-    combined_key      TEXT,
-    incident_rate     TEXT,         -- added May 29 2020
-    case_fatality_ratio TEXT,       -- added May 29 2020
+    -- v1 / v2 column names (Jan 22 – Mar 21 2020) — slash style
+    province_state_v1   TEXT,         -- original: "Province/State"
+    country_region_v1   TEXT,         -- original: "Country/Region"
+    last_update_v1      TEXT,         -- original: "Last Update"
+    latitude_v1         TEXT,         -- added Mar 1: "Latitude"
+    longitude_v1        TEXT,         -- added Mar 1: "Longitude"
 
-    -- present in ALL versions
-    confirmed         TEXT,
-    deaths            TEXT,
-    recovered         TEXT
+    -- v3 / v4 column names (Mar 22 2020 onwards) — underscore style
+    fips                TEXT,         -- US county code
+    admin2              TEXT,         -- US county name
+    province_state      TEXT,         -- renamed from "Province/State"
+    country_region      TEXT,         -- renamed from "Country/Region"
+    last_update         TEXT,         -- renamed from "Last Update"
+    lat                 TEXT,
+    long_               TEXT,
+    active              TEXT,
+    combined_key        TEXT,
+    incident_rate       TEXT,         -- added May 29 2020
+    case_fatality_ratio TEXT,         -- added May 29 2020
+
+    -- present in ALL schema versions
+    confirmed           TEXT,
+    deaths              TEXT,
+    recovered           TEXT
 );
 
 
