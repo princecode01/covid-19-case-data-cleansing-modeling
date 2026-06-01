@@ -1,40 +1,59 @@
 from sqlalchemy import create_engine, text
+from datetime import date
 
 DB_URL = "postgresql://covid_user:covid_pass@localhost/covid_db"
 
+
+GET_NEW_DATES_SQL = """
+    SELECT DISTINCT report_date FROM silver.covid_cases
+    EXCEPT
+    SELECT DISTINCT full_date   FROM gold.dim_date
+    ORDER BY 1
+"""
+
+# ── dim_date — insert only new dates ─────────────────────────────
 DIM_DATE_SQL = """
-INSERT INTO gold.dim_date (full_date, year, month, day, quarter, month_name, week_number, day_of_week)
+INSERT INTO gold.dim_date
+    (full_date, year, month, day, quarter, month_name, week_number, day_of_week)
 SELECT DISTINCT
     report_date,
-    EXTRACT(YEAR  FROM report_date)::SMALLINT,
-    EXTRACT(MONTH FROM report_date)::SMALLINT,
-    EXTRACT(DAY   FROM report_date)::SMALLINT,
-    EXTRACT(QUARTER   FROM report_date)::SMALLINT,
+    EXTRACT(YEAR    FROM report_date)::SMALLINT,
+    EXTRACT(MONTH   FROM report_date)::SMALLINT,
+    EXTRACT(DAY     FROM report_date)::SMALLINT,
+    EXTRACT(QUARTER FROM report_date)::SMALLINT,
     TO_CHAR(report_date, 'Month'),
-    EXTRACT(WEEK FROM report_date),
+    EXTRACT(WEEK    FROM report_date)::SMALLINT,
     TO_CHAR(report_date, 'Day')
 FROM silver.covid_cases
+WHERE report_date = ANY(:new_dates)
 ON CONFLICT (full_date) DO NOTHING;
 """
 
+
+# ── dim_location — insert only locations that appear in the new dates ─────
 DIM_LOCATION_SQL = """
-INSERT INTO gold.dim_location (country, province, lat, long_)
-SELECT DISTINCT
+INSERT INTO gold.dim_location
+    (country_region, province_state, admin2, lat, long_)
+SELECT DISTINCT ON (country_region, province_state, admin2)
     country_region,
     province_state,
     admin2,
     AVG(lat)   OVER (PARTITION BY country_region, province_state, admin2),
     AVG(long_) OVER (PARTITION BY country_region, province_state, admin2)
 FROM silver.covid_cases
+WHERE report_date = ANY(:new_dates)
 ON CONFLICT (country_region, province_state, admin2) DO NOTHING;
 """
 
+# ── fact — insert only today's rows, but read 7-day history ───────
 FACT_SQL = """
 INSERT INTO gold.fact_covid_cases
     (date_id, location_id, confirmed, deaths, recovered,
      new_confirmed, new_deaths, moving_avg_7d)
 
-WITH windowed AS (
+WITH history AS (
+    -- Read today + 6 days before it per location
+    -- This gives LAG() and the 7-day window enough history to work correctly
     SELECT
         s.report_date,
         s.country_region,
@@ -42,18 +61,33 @@ WITH windowed AS (
         s.admin2,
         s.confirmed,
         s.deaths,
-        s.recovered,
-        -- new_confirmed: today's cumulative minus yesterday's cumulative
-        -- PARTITION BY location ensures we compare the same location only
-        s.confirmed - LAG(s.confirmed) OVER (
-            PARTITION BY s.country_region, s.province_state, s.admin2
-            ORDER BY s.report_date
-        ) AS new_confirmed_raw,
-        s.deaths - LAG(s.deaths) OVER (
-            PARTITION BY s.country_region, s.province_state, s.admin2
-            ORDER BY s.report_date
-        ) AS new_deaths_raw
+        s.recovered
     FROM silver.covid_cases s
+    WHERE s.report_date >= (
+        -- go back 7 days from the earliest new date
+        -- so the window function has enough rows to compute correctly
+        SELECT MIN(d) - INTERVAL '7 days'
+        FROM UNNEST(:new_dates::date[]) AS d
+    )
+),
+windowed AS (
+    SELECT
+        h.report_date,
+        h.country_region,
+        h.province_state,
+        h.admin2,
+        h.confirmed,
+        h.deaths,
+        h.recovered,
+        h.confirmed - LAG(h.confirmed) OVER (
+            PARTITION BY h.country_region, h.province_state, h.admin2
+            ORDER BY h.report_date
+        ) AS new_confirmed_raw,
+        h.deaths - LAG(h.deaths) OVER (
+            PARTITION BY h.country_region, h.province_state, h.admin2
+            ORDER BY h.report_date
+        ) AS new_deaths_raw
+    FROM history h
 )
 SELECT
     d.date_id,
@@ -61,9 +95,8 @@ SELECT
     w.confirmed,
     w.deaths,
     w.recovered,
-    GREATEST(w.new_confirmed_raw, 0)  AS new_confirmed,  -- clip negatives
-    GREATEST(w.new_deaths_raw, 0)     AS new_deaths,
-    -- 7-day moving average: current row + 6 rows before it
+    GREATEST(w.new_confirmed_raw, 0) AS new_confirmed,
+    GREATEST(w.new_deaths_raw,    0) AS new_deaths,
     AVG(GREATEST(w.new_confirmed_raw, 0)) OVER (
         PARTITION BY w.country_region, w.province_state, w.admin2
         ORDER BY w.report_date
@@ -71,11 +104,12 @@ SELECT
     ) AS moving_avg_7d
 FROM windowed w
 JOIN gold.dim_date d
-    ON d.full_date = w.report_date
+    ON  d.full_date = w.report_date
 JOIN gold.dim_location l
     ON  l.country_region   = w.country_region
     AND l.province_state IS NOT DISTINCT FROM w.province_state
     AND l.admin2         IS NOT DISTINCT FROM w.admin2
+WHERE w.report_date = ANY(:new_dates)   -- only INSERT today's rows
 ON CONFLICT (date_id, location_id) DO UPDATE SET
     confirmed     = EXCLUDED.confirmed,
     deaths        = EXCLUDED.deaths,
@@ -85,30 +119,45 @@ ON CONFLICT (date_id, location_id) DO UPDATE SET
     moving_avg_7d = EXCLUDED.moving_avg_7d;
 """
 
-def silver_to_gold():
+
+# Get dates that are in Silver but not yet in Gold — these are the dates we need to process.
+def get_new_dates(conn) -> list[date]:
+    result = conn.execute(text(GET_NEW_DATES_SQL))
+    return [row[0] for row in result]
+
+
+
+
+# This is the main function that runs the Gold pipeline. It checks for new dates in Silver, and if it finds any, it runs the SQL queries to populate the dim_date, dim_location, and fact_covid_cases tables in Gold.
+def silver_to_gold() -> None:
+
     engine = create_engine(DB_URL)
-    truncate_sql = """
-            TRUNCATE TABLE gold.fact_covid_cases, gold.dim_date, gold.dim_location
-            RESTART IDENTITY CASCADE;
-        """
+
     with engine.connect() as conn:
-        # Start a transaction block
         with conn.begin():
-            # Truncate all tables
-            print("Truncating Gold schema tables")
-            conn.execute(text(truncate_sql))
 
-            # Tables insertion
-            print("Populating dim_date...")
-            conn.execute(text(DIM_DATE_SQL))
+            new_dates = get_new_dates(conn)
 
-            print("Populating dim_location...")
-            conn.execute(text(DIM_LOCATION_SQL))
-            
-            print("Populating fact_covid_cases...")
-            conn.execute(text(FACT_SQL))
+            if not new_dates:
+                print("🥇 Gold is already up to date — nothing to process")
+                return
 
-    print("✅ Gold complete")
+            print(f"🥇 Loading {len(new_dates)} new date(s) into Gold: {new_dates}\n")
+
+            # Pass new_dates as a parameter to the SQL queries
+            params = {"new_dates": new_dates}
+
+            print("  Populating dim_date...")
+            conn.execute(text(DIM_DATE_SQL), params)
+
+            print("  Populating dim_location...")
+            conn.execute(text(DIM_LOCATION_SQL), params)
+
+            print("  Populating fact_covid_cases...")
+            conn.execute(text(FACT_SQL), params)
+
+    print(f"\n✅ Gold complete — {len(new_dates)} new date(s) loaded")
+
 
 if __name__ == "__main__":
     silver_to_gold()
