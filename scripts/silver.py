@@ -171,10 +171,13 @@ def bronze_to_silver():
     print(f"🥈 Processing {len(new_files)} new Bronze file(s)...\n")
 
     # Read ONLY the new files — not the entire Bronze table
-    placeholders = ", ".join(f"'{f}'" for f in new_files)
     df = pd.read_sql(
-        f"SELECT * FROM bronze.raw_daily_reports WHERE _source_file IN ({placeholders})",
-        engine
+        text(
+            "SELECT * FROM bronze.raw_daily_reports"
+            " WHERE _source_file = ANY(:new_files)"
+        ),
+        engine,
+        params={"new_files": new_files}
     )
 
     print(f"   {len(df):,} new rows loaded to process")
