@@ -1,7 +1,7 @@
 import pandas as pd
 from sqlalchemy import create_engine, text
 
-DB_URL = "postgresql://covid_user:covid_pass@localhost/covid_db"
+DB_URL = "postgresql://covid_user:covid_pass@postgres/covid_db"
 
 # ── Country name normalization lookup ────────────────────────────────
 COUNTRY_MAP = {
@@ -68,8 +68,8 @@ def unify_columns(df: pd.DataFrame) -> pd.DataFrame:
     df["province_state"] = df["province_state"].combine_first(
                               df["province_state_v1"])
     
-    df["lat"]  = df["lat"].combine_first(df["latitude_v2"])
-    df["long_"] = df["long_"].combine_first(df["longitude_v2"])
+    df["lat"]  = df["lat"].combine_first(df["latitude_v1"])
+    df["long_"] = df["long_"].combine_first(df["longitude_v1"])
     return df
 
 def validate_silver(df: pd.DataFrame) -> bool:
@@ -81,19 +81,19 @@ def validate_silver(df: pd.DataFrame) -> bool:
         errors.append(f"report_date: {null_dates:,} nulls")
 
     # country
-    null_country = df["country"].isna().sum()
-    blank_country = (df["country"].str.strip() == "").sum()
-    unmapped = df[df["country"].isin(COUNTRY_MAP.keys())]["country"].unique()
+    null_country = df["country_region"].isna().sum()
+    blank_country = (df["country_region"].str.strip() == "").sum()
+    unmapped = df[df["country_region"].isin(COUNTRY_MAP.keys())]["country_region"].unique()
     if null_country > 0:
-        errors.append(f"country: {null_country:,} nulls")
+        errors.append(f"country_region: {null_country:,} nulls")
     if blank_country > 0:
-        errors.append(f"country: {blank_country:,} blank values")
+        errors.append(f"country_region: {blank_country:,} blank values")
     if len(unmapped) > 0:
-        errors.append(f"country: {len(unmapped)} raw names not normalized → {list(unmapped)}")
+        errors.append(f"country_region: {len(unmapped)} raw names not normalized → {list(unmapped)}")
 
     # province — allowed to be null (not all countries have provinces)
     # just report how many are null for awareness
-    null_province = df["province"].isna().sum()
+    null_province = df["province_state"].isna().sum()
     print(f"  ℹ️  province: {null_province:,} nulls (expected)")
 
     # lat, long_

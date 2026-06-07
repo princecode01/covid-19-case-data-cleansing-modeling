@@ -1,13 +1,11 @@
 from airflow.sdk import dag, task
 from pendulum import datetime
-import sys
 
-if "/opt/airflow/scripts" not in sys.path:
-    sys.path.append("/opt/airflow/scripts")
 
-from bronze import ingest_one_day
-from silver import bronze_to_silver
-from gold   import silver_to_gold
+def setup_scripts_path():
+    import sys
+    if "/opt/airflow/scripts" not in sys.path:
+        sys.path.append("/opt/airflow/scripts")
 
 
 @dag(
@@ -16,21 +14,27 @@ from gold   import silver_to_gold
     end_date=datetime(2023, 3, 9, tz="UTC"),
     schedule="@daily",
     catchup=True,
-    max_active_runs=3,
+    max_active_runs=1,
     tags=["covid", "bronze", "silver", "gold"],
 )
 def covid_pipeline():
 
     @task
     def bronze_task(logical_date=None):
+        setup_scripts_path()
+        from bronze import ingest_one_day
         ingest_one_day(logical_date.date())
 
     @task
     def silver_task():
+        setup_scripts_path()
+        from silver import bronze_to_silver
         bronze_to_silver()
 
     @task
     def gold_task():
+        setup_scripts_path()
+        from gold import silver_to_gold
         silver_to_gold()
 
     bronze = bronze_task()

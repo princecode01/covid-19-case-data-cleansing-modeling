@@ -100,6 +100,9 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
     AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: "admin:admin"
+    AIRFLOW__API_AUTH__JWT_SECRET: 'supersecretjwtkey1234567890abcdef'
+    AIRFLOW__SECRETS__JWT_SECRET: 'supersecretjwtkey1234567890abcdef'
+    AIRFLOW__API__SECRET_KEY: 'supersecretjwtkey1234567890abcdef'
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs

@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, text
 from datetime import date
 
-DB_URL = "postgresql://covid_user:covid_pass@localhost/covid_db"
+DB_URL = "postgresql://covid_user:covid_pass@postgres/covid_db"
 
 
 GET_NEW_DATES_SQL = """
@@ -67,7 +67,7 @@ WITH history AS (
         -- go back 7 days from the earliest new date
         -- so the window function has enough rows to compute correctly
         SELECT MIN(d) - INTERVAL '7 days'
-        FROM UNNEST(:new_dates::date[]) AS d
+        FROM UNNEST(CAST(:new_dates AS date[])) AS d
     )
 ),
 windowed AS (
@@ -89,7 +89,7 @@ windowed AS (
         ) AS new_deaths_raw
     FROM history h
 )
-SELECT
+SELECT DISTINCT ON (d.date_id, l.location_id)
     d.date_id,
     l.location_id,
     w.confirmed,
@@ -110,6 +110,7 @@ JOIN gold.dim_location l
     AND l.province_state IS NOT DISTINCT FROM w.province_state
     AND l.admin2         IS NOT DISTINCT FROM w.admin2
 WHERE w.report_date = ANY(:new_dates)   -- only INSERT today's rows
+ORDER BY d.date_id, l.location_id 
 ON CONFLICT (date_id, location_id) DO UPDATE SET
     confirmed     = EXCLUDED.confirmed,
     deaths        = EXCLUDED.deaths,

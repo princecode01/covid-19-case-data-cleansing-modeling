@@ -3,12 +3,13 @@ CREATE SCHEMA IF NOT EXISTS silver;
 CREATE SCHEMA IF NOT EXISTS gold;
 
 
+-- ── Bronze ────────────────────────────────────────────────────────
+DROP TABLE IF EXISTS bronze.raw_daily_reports;
 
-CREATE TABLE IF NOT EXISTS bronze.raw_daily_reports (
-
-    -- metadata: added by us, not in the CSV (_prefix = "we added this")
-    _source_file        TEXT,         -- e.g. "01-22-2020.csv" (traceability)
-    _ingested_at        TIMESTAMP DEFAULT NOW(),  -- audit: when we downloaded it
+CREATE TABLE bronze.raw_daily_reports (
+    -- Metadata columns
+    _source_file        TEXT,         
+    _ingested_at        TIMESTAMPTZ DEFAULT NOW(),  -- audit: when we downloaded it
 
     -- v1 / v2 column names (Jan 22 – Mar 21 2020) — slash style
     province_state_v1   TEXT,         -- original: "Province/State"
@@ -27,8 +28,8 @@ CREATE TABLE IF NOT EXISTS bronze.raw_daily_reports (
     long_               TEXT,
     active              TEXT,
     combined_key        TEXT,
-    incident_rate       TEXT,         -- added May 29 2020
-    case_fatality_ratio TEXT,         -- added May 29 2020
+    incident_rate       TEXT,         
+    case_fatality_ratio TEXT,         
 
     -- present in ALL schema versions
     confirmed           TEXT,
@@ -36,8 +37,10 @@ CREATE TABLE IF NOT EXISTS bronze.raw_daily_reports (
     recovered           TEXT
 );
 
+-- ── Silver ────────────────────────────────────────────────────────
+DROP TABLE IF EXISTS silver.covid_cases;
 
-CREATE TABLE IF NOT EXISTS silver.covid_cases (
+CREATE TABLE silver.covid_cases (
     id               BIGSERIAL PRIMARY KEY,
     report_date      DATE        NOT NULL,
     country_region   TEXT        NOT NULL,
@@ -48,12 +51,19 @@ CREATE TABLE IF NOT EXISTS silver.covid_cases (
     recovered        INTEGER     NOT NULL DEFAULT 0,
     lat              NUMERIC(9,6),
     long_            NUMERIC(9,6),
-    source_file      TEXT,                   -- traceability from Bronze
+    source_file      TEXT,                   
     UNIQUE (report_date, country_region, province_state, admin2)
 );
 
+-- ── Gold ────────────────────────────────────────────────────────
+-- Drop fact FIRST — it references dim_date and dim_location
+-- If you drop dim_date first, Postgres refuses because fact still points to it
+DROP TABLE IF EXISTS gold.fact_covid_cases;
+DROP TABLE IF EXISTS gold.dim_date;
+DROP TABLE IF EXISTS gold.dim_location;
 
-CREATE TABLE IF NOT EXISTS gold.dim_date (
+
+CREATE TABLE gold.dim_date (
     date_id      SERIAL PRIMARY KEY,
     full_date    DATE   UNIQUE NOT NULL,
     year         SMALLINT,
@@ -65,18 +75,17 @@ CREATE TABLE IF NOT EXISTS gold.dim_date (
     day_of_week  TEXT
 );
 
-CREATE TABLE IF NOT EXISTS gold.dim_location (
+CREATE TABLE gold.dim_location (
     location_id    SERIAL PRIMARY KEY,
-    country        TEXT NOT NULL,
-    province       TEXT,
+    country_region        TEXT NOT NULL,
+    province_state       TEXT,
     admin2         TEXT,            -- US county, NULL elsewhere
     lat            NUMERIC(9,6),
     long_          NUMERIC(9,6),
-    UNIQUE (country, province)
+    UNIQUE (country_region, province_state, admin2)
 );
 
-
-CREATE TABLE IF NOT EXISTS gold.fact_covid_cases (
+CREATE TABLE gold.fact_covid_cases (
     cases_id        BIGSERIAL PRIMARY KEY,
     date_id        INTEGER NOT NULL REFERENCES gold.dim_date(date_id),
     location_id    INTEGER NOT NULL REFERENCES gold.dim_location(location_id),
@@ -88,3 +97,5 @@ CREATE TABLE IF NOT EXISTS gold.fact_covid_cases (
     moving_avg_7d  NUMERIC(12,2), -- 7-day rolling avg of new_confirmed
     UNIQUE (date_id, location_id)
 );
+
+

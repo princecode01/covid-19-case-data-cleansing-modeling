@@ -361,7 +361,7 @@ BASE_URL = (
     "/master/csse_covid_19_data/csse_covid_19_daily_reports/"
 )
 
-DB_URL = "postgresql://covid_user:covid_pass@localhost/covid_db"
+DB_URL = "postgresql://covid_user:covid_pass@postgres/covid_db"
 
 COLUMNS_MAP = {
     "Province/State":      "province_state_v1",
