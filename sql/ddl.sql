@@ -99,3 +99,37 @@ CREATE TABLE gold.fact_covid_cases (
 );
 
 
+CREATE OR REPLACE VIEW gold.v_global_daily_cases AS
+SELECT
+    d.full_date,
+    SUM(f.new_confirmed) AS new_cases
+FROM gold.fact_covid_cases f
+JOIN gold.dim_date d
+    ON f.date_id = d.date_id
+GROUP BY d.full_date
+ORDER BY d.full_date;
+
+
+CREATE OR REPLACE VIEW gold.v_global_cumulative_metrics AS
+SELECT
+    d.full_date,
+    SUM(f.confirmed) AS cumulative_cases,
+    SUM(f.deaths) AS cumulative_deaths,
+    SUM(f.recovered) AS cumulative_recoveries
+FROM gold.fact_covid_cases f
+JOIN gold.dim_date d
+    ON f.date_id = d.date_id
+GROUP BY d.full_date
+ORDER BY d.full_date;
+
+
+CREATE OR REPLACE VIEW gold.v_moving_avg_7d AS
+SELECT 
+    d.full_date,
+    f.new_confirmed,
+    f.moving_avg_7d
+FROM gold.fact_covid_cases f
+JOIN gold.dim_date d
+    ON f.date_id = d.date_id
+
+
