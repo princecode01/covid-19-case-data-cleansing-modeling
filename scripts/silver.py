@@ -1,7 +1,9 @@
+import os
 import pandas as pd
 from sqlalchemy import create_engine, text
 
-DB_URL = "postgresql://covid_user:covid_pass@postgres/covid_db"
+DB_HOST = os.getenv("DB_HOST", "localhost")  # default to localhost
+DB_URL = f"postgresql://covid_user:covid_pass@{DB_HOST}/covid_db"
 
 # ── Country name normalization lookup ────────────────────────────────
 COUNTRY_MAP = {
@@ -57,12 +59,7 @@ def coerce_int(series: pd.Series) -> pd.Series:
     )
 
 def unify_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Merge the 4-schema mess into a single canonical shape.
-    v1/v2 files have province_state_v1, country_region_v1, etc.
-    v3/v4 files have province_state, country_region, etc.
-    We combine them with coalesce logic.
-    """
+    # Unify the 4 different schemas into one shape with consistent column names
     df["country_region"] = df["country_region"].combine_first(
                               df["country_region_v1"])
     df["province_state"] = df["province_state"].combine_first(
@@ -226,15 +223,15 @@ def bronze_to_silver():
 
     # 8. Remove duplicates (same date + country + province )
     df = df.drop_duplicates(
-        subset=["report_date", "country_region", "province_state", "admin2"],
+        subset=["report_date", "country_region", "province_state"],
         keep="last"
     )
     print(f"  {len(df):,} rows after deduplication")
 
     # 9. Select final columns for Silver
     silver = df[[
-        "report_date", "country_region", "province_state", "admin2",
-         "confirmed", "deaths", "recovered", "lat", "long_", "_source_file"
+        "report_date", "country_region", "province_state",
+         "confirmed", "deaths", "recovered","active", "lat", "long_", "_source_file"
     ]].rename(columns={"_source_file": "source_file"})
 
     valid = validate_silver(silver)
@@ -242,15 +239,11 @@ def bronze_to_silver():
         print("❌ Silver validation failed, aborting load to database.")
         return
 
-    # 10. Write to Silver (truncate first for idempotency)
-    with engine.connect() as conn:
-        conn.execute(text("TRUNCATE TABLE silver.covid_cases RESTART IDENTITY"))
-        conn.commit()
-
+    # 10. Load to Silver table
     silver.to_sql(
         "covid_cases", engine,
         schema="silver", if_exists="append",
-        index=False, method="multi"
+        index=False, method="multi", chunksize=5000
     )
     print(f"✅ Silver complete: {len(silver):,} clean rows")
 

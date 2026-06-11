@@ -1,7 +1,9 @@
+import os
 from sqlalchemy import create_engine, text
 from datetime import date
 
-DB_URL = "postgresql://covid_user:covid_pass@postgres/covid_db"
+DB_HOST = os.getenv("DB_HOST", "localhost")  # default to localhost
+DB_URL = f"postgresql://covid_user:covid_pass@{DB_HOST}/covid_db"
 
 
 GET_NEW_DATES_SQL = """
@@ -33,22 +35,21 @@ ON CONFLICT (full_date) DO NOTHING;
 # ── dim_location — insert only locations that appear in the new dates ─────
 DIM_LOCATION_SQL = """
 INSERT INTO gold.dim_location
-    (country_region, province_state, admin2, lat, long_)
-SELECT DISTINCT ON (country_region, province_state, admin2)
+    (country_region, province_state, lat, long_)
+SELECT DISTINCT ON (country_region, province_state)
     country_region,
     province_state,
-    admin2,
-    AVG(lat)   OVER (PARTITION BY country_region, province_state, admin2),
-    AVG(long_) OVER (PARTITION BY country_region, province_state, admin2)
+    AVG(lat)   OVER (PARTITION BY country_region, province_state),
+    AVG(long_) OVER (PARTITION BY country_region, province_state)
 FROM silver.covid_cases
 WHERE report_date = ANY(:new_dates)
-ON CONFLICT (country_region, province_state, admin2) DO NOTHING;
+ON CONFLICT (country_region, province_state) DO NOTHING;
 """
 
 # ── fact — insert only today's rows, but read 7-day history ───────
 FACT_SQL = """
 INSERT INTO gold.fact_covid_cases
-    (date_id, location_id, confirmed, deaths, recovered,
+    (date_id, location_id, confirmed, deaths, recovered, active,
      new_confirmed, new_deaths, moving_avg_7d)
 
 WITH history AS (
@@ -58,10 +59,10 @@ WITH history AS (
         s.report_date,
         s.country_region,
         s.province_state,
-        s.admin2,
         s.confirmed,
         s.deaths,
-        s.recovered
+        s.recovered,
+        s.active
     FROM silver.covid_cases s
     WHERE s.report_date >= (
         -- go back 7 days from the earliest new date
@@ -75,16 +76,16 @@ windowed AS (
         h.report_date,
         h.country_region,
         h.province_state,
-        h.admin2,
         h.confirmed,
         h.deaths,
         h.recovered,
+        h.active,
         h.confirmed - LAG(h.confirmed) OVER (
-            PARTITION BY h.country_region, h.province_state, h.admin2
+            PARTITION BY h.country_region, h.province_state 
             ORDER BY h.report_date
         ) AS new_confirmed_raw,
         h.deaths - LAG(h.deaths) OVER (
-            PARTITION BY h.country_region, h.province_state, h.admin2
+            PARTITION BY h.country_region, h.province_state 
             ORDER BY h.report_date
         ) AS new_deaths_raw
     FROM history h
@@ -95,10 +96,11 @@ SELECT DISTINCT ON (d.date_id, l.location_id)
     w.confirmed,
     w.deaths,
     w.recovered,
+    w.active,
     GREATEST(w.new_confirmed_raw, 0) AS new_confirmed,
     GREATEST(w.new_deaths_raw,    0) AS new_deaths,
     AVG(GREATEST(w.new_confirmed_raw, 0)) OVER (
-        PARTITION BY w.country_region, w.province_state, w.admin2
+        PARTITION BY w.country_region, w.province_state
         ORDER BY w.report_date
         ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
     ) AS moving_avg_7d
@@ -108,7 +110,6 @@ JOIN gold.dim_date d
 JOIN gold.dim_location l
     ON  l.country_region   = w.country_region
     AND l.province_state IS NOT DISTINCT FROM w.province_state
-    AND l.admin2         IS NOT DISTINCT FROM w.admin2
 WHERE w.report_date = ANY(:new_dates)   -- only INSERT today's rows
 ORDER BY d.date_id, l.location_id 
 ON CONFLICT (date_id, location_id) DO UPDATE SET
@@ -143,7 +144,7 @@ def silver_to_gold() -> None:
                 print("🥇 Gold is already up to date — nothing to process")
                 return
 
-            print(f"🥇 Loading {len(new_dates)} new date(s) into Gold: {new_dates}\n")
+            print(f"🥇 Loading {len(new_dates)} new date(s) into Gold: {[str(d) for d in new_dates]}\n")
 
             # Pass new_dates as a parameter to the SQL queries
             params = {"new_dates": new_dates}

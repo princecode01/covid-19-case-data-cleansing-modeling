@@ -45,19 +45,21 @@ CREATE TABLE silver.covid_cases (
     report_date      DATE        NOT NULL,
     country_region   TEXT        NOT NULL,
     province_state   TEXT,                   -- NULL for country-level rows
-    admin2           TEXT,                   -- US county, NULL elsewhere
     confirmed        INTEGER     NOT NULL DEFAULT 0,
     deaths           INTEGER     NOT NULL DEFAULT 0,
     recovered        INTEGER     NOT NULL DEFAULT 0,
+    active           INTEGER     NOT NULL DEFAULT 0,
     lat              NUMERIC(9,6),
     long_            NUMERIC(9,6),
     source_file      TEXT,                   
-    UNIQUE (report_date, country_region, province_state, admin2)
+    UNIQUE (report_date, country_region, province_state)
 );
 
 -- ── Gold ────────────────────────────────────────────────────────
 -- Drop fact FIRST — it references dim_date and dim_location
 -- If you drop dim_date first, Postgres refuses because fact still points to it
+DROP VIEW IF EXISTS gold.v_global_daily_cases, gold.v_global_cumulative_metrics, gold.v_moving_avg_7d;
+
 DROP TABLE IF EXISTS gold.fact_covid_cases;
 DROP TABLE IF EXISTS gold.dim_date;
 DROP TABLE IF EXISTS gold.dim_location;
@@ -79,10 +81,9 @@ CREATE TABLE gold.dim_location (
     location_id    SERIAL PRIMARY KEY,
     country_region        TEXT NOT NULL,
     province_state       TEXT,
-    admin2         TEXT,            -- US county, NULL elsewhere
     lat            NUMERIC(9,6),
     long_          NUMERIC(9,6),
-    UNIQUE (country_region, province_state, admin2)
+    UNIQUE (country_region, province_state)
 );
 
 CREATE TABLE gold.fact_covid_cases (
@@ -92,11 +93,13 @@ CREATE TABLE gold.fact_covid_cases (
     confirmed      INTEGER NOT NULL DEFAULT 0,
     deaths         INTEGER NOT NULL DEFAULT 0,
     recovered      INTEGER NOT NULL DEFAULT 0,
+    active         INTEGER NOT NULL DEFAULT 0,
     new_confirmed  INTEGER,
     new_deaths     INTEGER,
     moving_avg_7d  NUMERIC(12,2), -- 7-day rolling avg of new_confirmed
     UNIQUE (date_id, location_id)
 );
+
 
 
 CREATE OR REPLACE VIEW gold.v_global_daily_cases AS

@@ -103,6 +103,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__API_AUTH__JWT_SECRET: 'supersecretjwtkey1234567890abcdef'
     AIRFLOW__SECRETS__JWT_SECRET: 'supersecretjwtkey1234567890abcdef'
     AIRFLOW__API__SECRET_KEY: 'supersecretjwtkey1234567890abcdef'
+    DB_HOST: postgres   # ← tells scripts to use Docker service name
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -156,7 +157,7 @@ services:
     container_name: airflow_apiserver
     command: api-server
     ports:
-      - "8080:8080"
+      - "8200:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]  
       interval: 10s
