@@ -55,7 +55,7 @@ Star-ish schema:
 - `gold.fact_covid_cases` with:
   - cumulative measures
   - `new_confirmed`, `new_deaths`
-  - `moving_avg_7d` (7-day rolling avg of new confirmed)
+  - `moving_avg_7d` (7-day moving average of new confirmed)
 
 Analytics views:
 
